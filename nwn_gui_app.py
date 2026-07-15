@@ -10,10 +10,7 @@ CONFIG_PATH = os.path.join(
     os.path.expanduser("~"),
     ".nwn_log_analyzer_config.json")
 
-DEFAULT_CHARACTERS = [
-    "Rayna Ralien", "Selkie Smoothhand", "Pony (PM)",
-    "Merryway Markham", "Crab Apples", "Klanita Brina"
-]
+DEFAULT_CHARACTERS = ["Klanita Brina"]
 
 
 def load_config():
