@@ -14,7 +14,7 @@ to a log file. By default this is turned off.
 - Open this file: `E:\Program Files\NWN Diamond\nwnplayer.ini`
 - Under `[Game Options]`, add these two lines (or enable them if already present):
 
-```
+```ini
 [Game Options]
 ClientEntireChatWindowLogging=1
 ClientChatLogging=1
@@ -25,7 +25,7 @@ ClientChatLogging=1
 
 - You'll see files named like this:
 
-```
+```cmd
 nwclientLog1.txt
 nwclientLog2.txt
 nwclientLog3.txt
@@ -60,7 +60,7 @@ There are two ways to use this tool, depending on your comfort level.
 
 ### Option A: No-install desktop app (recommended for most users)
 
-1. Go to the [Releases](#) page of this repository.
+1. Go to the [Releases](https://github.com/kmsaryan/NwNlCombatlogger/releases) page of this repository.
 2. Download `NWN_Log_Analyzer.exe` (Windows) — no Python or pip required.
 3. Double-click to run. A desktop window opens with buttons and text
    boxes — no command line needed.
@@ -72,7 +72,7 @@ There are two ways to use this tool, depending on your comfort level.
 
 Requires Python 3.9+ installed.
 
-```
+```cmd
 pip install -r requirements.txt
 python nwn_gui_app.py
 ```
@@ -97,7 +97,7 @@ python nwn_gui_app.py
 If you've made changes to `nwn_gui_app.py` and want to rebuild the
 distributable `.exe`:
 
-```
+```cmd
 pip install pyinstaller
 python build_exe.py
 ```
@@ -115,4 +115,3 @@ file to GitHub Releases — end users never need Python installed.
   If your server uses a modified logging format, some lines may not be
   captured — check the regex patterns in `nwn_gui_app.py` if stats look
   incomplete.
-

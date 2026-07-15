@@ -2,6 +2,8 @@ import re
 import os
 import json
 import glob
+import ctypes
+import platform
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from collections import defaultdict
@@ -11,6 +13,19 @@ CONFIG_PATH = os.path.join(
     ".nwn_log_analyzer_config.json")
 
 DEFAULT_CHARACTERS = ["Klanita Brina"]
+
+
+def _fix_windows_dpi_scaling():
+
+    if platform.system() != "Windows":
+        return
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
 
 
 def load_config():
@@ -207,16 +222,73 @@ class NWNAnalyzerApp(tk.Tk):
             side="right")
 
     def _build_char_box(self):
-        frame = ttk.LabelFrame(self, text="Character Names (one per line)")
+        frame = ttk.LabelFrame(self, text="Player / Toon Roster")
         frame.pack(fill="x", padx=10, pady=4)
-        self.char_text = tk.Text(frame, height=4)
-        self.char_text.pack(fill="x", padx=6, pady=6)
-        self.char_text.insert(
-            "1.0",
-            "\n".join(
-                self.cfg.get(
-                    "characters",
-                    DEFAULT_CHARACTERS)))
+
+        list_frame = ttk.Frame(frame)
+        list_frame.pack(side="left", fill="both", expand=True, padx=6, pady=6)
+
+        self.char_listbox = tk.Listbox(
+            list_frame,
+            height=5,
+            selectmode="extended")
+        self.char_listbox.pack(side="left", fill="both", expand=True)
+        vsb = ttk.Scrollbar(
+            list_frame,
+            orient="vertical",
+            command=self.char_listbox.yview)
+        self.char_listbox.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="left", fill="y")
+
+        for name in self.cfg.get("characters", DEFAULT_CHARACTERS):
+            self.char_listbox.insert("end", name)
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(side="left", fill="y", padx=6, pady=6)
+
+        self.char_entry = ttk.Entry(btn_frame, width=22)
+        self.char_entry.pack(pady=(0, 4))
+        self.char_entry.bind("<Return>", lambda e: self.add_character())
+
+        ttk.Button(btn_frame, text="Add",
+                   command=self.add_character).pack(fill="x", pady=2)
+        ttk.Button(btn_frame, text="Remove Selected",
+                   command=self.remove_character).pack(fill="x", pady=2)
+        ttk.Button(btn_frame, text="Save as Default Roster",
+                   command=self.save_default_roster).pack(
+                       fill="x", pady=(10, 2))
+        ttk.Button(btn_frame, text="Reset to Built-in Default",
+                   command=self.reset_default_roster).pack(fill="x", pady=2)
+
+    def add_character(self):
+        name = self.char_entry.get().strip()
+        if name:
+            self.char_listbox.insert("end", name)
+            self.char_entry.delete(0, "end")
+
+    def remove_character(self):
+        for idx in reversed(self.char_listbox.curselection()):
+            self.char_listbox.delete(idx)
+
+    def get_characters(self):
+        return list(self.char_listbox.get(0, "end"))
+
+    def save_default_roster(self):
+        characters = self.get_characters()
+        if not characters:
+            messagebox.showwarning("Empty roster",
+                                   "Add at least one character first.")
+            return
+        self.cfg["characters"] = characters
+        save_config(self.cfg)
+        messagebox.showinfo("Saved",
+                            "Default roster updated ({} character(s))."
+                            .format(len(characters)))
+
+    def reset_default_roster(self):
+        self.char_listbox.delete(0, "end")
+        for name in DEFAULT_CHARACTERS:
+            self.char_listbox.insert("end", name)
 
     def _build_tabs(self):
         self.notebook = ttk.Notebook(self)
@@ -308,11 +380,11 @@ class NWNAnalyzerApp(tk.Tk):
                 "No files",
                 "Please select log file(s) or use the default folder.")
             return
-        characters = [
-            c.strip() for c in self.char_text.get(
-                "1.0", "end").splitlines() if c.strip()]
-        self.cfg["characters"] = characters
-        save_config(self.cfg)
+        characters = self.get_characters()
+        if not characters:
+            messagebox.showwarning(
+                "No characters", "Please add at least one character name.")
+            return
 
         (files_processed, errors, stats_pc, stats_m,
          extra_stats) = analyze_nwn_log(
@@ -413,5 +485,6 @@ class NWNAnalyzerApp(tk.Tk):
 
 
 if __name__ == "__main__":
+    _fix_windows_dpi_scaling()
     app = NWNAnalyzerApp()
     app.mainloop()
