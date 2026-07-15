@@ -2,3 +2,4 @@
 build/
 dist/
 NWN_Log_Analyzer.spec
+_pycache__/
