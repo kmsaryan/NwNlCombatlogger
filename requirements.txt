@@ -1,0 +1,6 @@
+streamlit
+pyinstaller
+
+# Optional Windows-only shortcut support used by install.py
+pywin32; platform_system == "Windows"
+winshell; platform_system == "Windows"
