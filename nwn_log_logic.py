@@ -8,6 +8,7 @@ be reused by the Tkinter app, a future web app, or unit tests.
 import re
 import os
 import json
+import argparse
 from collections import defaultdict
 
 CONFIG_PATH = os.path.join(
@@ -91,6 +92,11 @@ def _new_extra_bucket():
         "hits_dealt": 0,
         "hits_taken": 0,
         "spells_cast": defaultdict(int),
+        "atk_hits": 0,
+        "atk_misses": 0,
+        "def_hits": 0,
+        "def_misses": 0,
+        "events": [],
     }
 
 
@@ -127,14 +133,15 @@ def analyze_nwn_log(file_paths, character_names):
             with open(
                 file_path, "r", encoding="utf-8", errors="ignore"
             ) as f:
-                for line in f:
-                    line = line.replace("[CHAT WINDOW TEXT] ", "")
+                for raw_line in f:
+                    raw = raw_line.strip()
+                    line = raw_line.replace("[CHAT WINDOW TEXT] ", "")
                     line = re.sub(r"\[.*?\]\s*", "", line).strip()
                     if not line:
                         continue
 
                     if _handle_attack_line(
-                        line, stats_pc, stats_m, extra_stats
+                        line, stats_pc, stats_m, extra_stats, raw
                     ):
                         continue
                     if _handle_cast_line(line, extra_stats):
@@ -160,7 +167,7 @@ def analyze_nwn_log(file_paths, character_names):
     return files_processed, errors, stats_pc, stats_m, extra_stats
 
 
-def _handle_attack_line(line, stats_pc, stats_m, extra_stats):
+def _handle_attack_line(line, stats_pc, stats_m, extra_stats, raw=""):
     m_atk = RE_ATK.search(line)
     if not m_atk:
         return False
@@ -175,10 +182,26 @@ def _handle_attack_line(line, stats_pc, stats_m, extra_stats):
         pct = int(pct_match.group(1)) if pct_match else 0
         extra_stats[tgt]["concealed_against"] += 1
         extra_stats[tgt]["concealment_pcts"].append(pct)
-    elif atk in stats_pc:
-        if "hit" in res_l:
+        return True
+
+    is_hit = "hit" in res_l
+    is_miss = "miss" in res_l and int(roll) > 1
+
+    if is_hit:
+        extra_stats[atk]["atk_hits"] += 1
+        extra_stats[tgt]["def_hits"] += 1
+        extra_stats[atk]["events"].append(("hit", raw))
+        extra_stats[tgt]["events"].append(("hit", raw))
+    elif is_miss:
+        extra_stats[atk]["atk_misses"] += 1
+        extra_stats[tgt]["def_misses"] += 1
+        extra_stats[atk]["events"].append(("miss", raw))
+        extra_stats[tgt]["events"].append(("miss", raw))
+
+    if atk in stats_pc:
+        if is_hit:
             stats_m[tgt]["hits_ac"].append(int(total))
-        elif "miss" in res_l and int(roll) > 1:
+        elif is_miss:
             stats_m[tgt]["misses_ac"].append(int(total))
     elif tgt in stats_pc:
         stats_m[atk]["ab"].append(int(bonus))
@@ -280,3 +303,67 @@ def _handle_kill_line(line, stats_pc, stats_m):
         stats_m[kil]["kills"] += 1
         stats_m[kil]["kill_victims"].append(vic)
     return True
+
+
+def _split_cli_characters(raw_value):
+    if not raw_value:
+        return DEFAULT_CHARACTERS
+    names = [part.strip() for part in raw_value.split(",")]
+    names = [name for name in names if name]
+    return names or DEFAULT_CHARACTERS
+
+
+def _print_cli_summary(files_processed, errors, stats_pc, stats_m):
+    print("\nProcessed {} file(s).".format(files_processed))
+    if errors:
+        print("Missing files:")
+        for path in errors:
+            print("  - {}".format(path))
+
+    print("\nCharacter Stats")
+    print("-" * 72)
+    print("{:<24} {:>8} {:>12} {:>12}".format(
+        "Character", "Kills", "Total Dmg", "Avg/Hit"))
+    for name, data in stats_pc.items():
+        avg = data["dmg_tot"] / data["hits_count"] if data["hits_count"] else 0
+        print("{:<24} {:>8} {:>12} {:>12.2f}".format(
+            name, data["kills"], data["dmg_tot"], avg))
+
+    print("\nMonster Stats")
+    print("-" * 72)
+    print("{:<24} {:>8} {:>12} {:>12}".format(
+        "Monster", "Max AB", "AC Range", "Avg Dmg"))
+    for name, data in sorted(stats_m.items()):
+        max_ab = max(data["ab"]) if data["ab"] else 0
+        hi_miss = max(data["misses_ac"]) + 1 if data["misses_ac"] else "?"
+        lo_hit = min(data["hits_ac"]) if data["hits_ac"] else "?"
+        avg = data["dmg_val"] / data["dmg_count"] if data["dmg_count"] else 0
+        print("{:<24} {:>8} {:>12} {:>12.2f}".format(
+            name, max_ab, "{} - {}".format(hi_miss, lo_hit), avg))
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=(
+            "Test the NWN combat log parser from the command line "
+            "without changing the GUI workflow."))
+    parser.add_argument(
+        "files",
+        nargs="+",
+        help="One or more NWN combat log files to analyze.")
+    parser.add_argument(
+        "--characters",
+        default=",".join(DEFAULT_CHARACTERS),
+        help=(
+            "Comma-separated character names to track. "
+            "Defaults to the built-in roster."))
+    args = parser.parse_args(argv)
+
+    character_names = _split_cli_characters(args.characters)
+    files_processed, errors, stats_pc, stats_m, _extra_stats = analyze_nwn_log(
+        args.files, character_names)
+    _print_cli_summary(files_processed, errors, stats_pc, stats_m)
+
+
+if __name__ == "__main__":
+    main()

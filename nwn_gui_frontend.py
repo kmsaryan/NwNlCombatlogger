@@ -14,10 +14,52 @@ import platform
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+from openpyxl import Workbook
+
 from nwn_log_logic import (
     analyze_nwn_log, load_config, save_config,
     DEFAULT_CHARACTERS, IGNORED_NAMES,
 )
+
+LEGEND = {
+    "Attack Record":
+        "Swings = attacks this entity made while attacking "
+        "(H = Hits landed, M = Misses). Taken = attacks this "
+        "entity received while being attacked (H = Hits landed "
+        "against it, M = Misses against it).",
+    "Save":
+        "Bonus = save bonus range added to the d20 roll. "
+        "DC = Difficulty Class the roll must meet or beat. "
+        "Needs X+ = the minimum raw d20 result (before adding "
+        "bonus) needed to beat the toughest DC seen, using the "
+        "lowest bonus seen in the log - it is neither DC nor "
+        "bonus alone, but DC minus bonus. "
+        "S = successful saves, F = failed saves.",
+    "Damage":
+        "Dealt = damage of this type this entity inflicted. "
+        "Taken = damage of this type this entity received.",
+    "Damage Type":
+        "Dealt = total damage of this type this monster "
+        "inflicted across all its attacks.",
+    "Mitigation":
+        "DR = Damage Resistance, a flat amount of damage "
+        "absorbed per hit. Immune = damage fully negated by "
+        "immunity. Concealed = number of attacks that missed "
+        "due to concealment (e.g. invisibility, fog).",
+    "Threat Rolls":
+        "Count = number of threat (aggro) rolls logged. "
+        "Max = highest threat roll total seen. "
+        "Avg = average threat roll total.",
+    "Cast":
+        "Number of times this entity cast this spell during "
+        "the session.",
+    "Per-Attack Damage":
+        "Min/Max/Count = smallest, largest, and total number "
+        "of individual damage instances dealt by this monster.",
+    "Kills":
+        "Number of kills this entity scored, and the name(s) "
+        "of the victim(s).",
+}
 
 
 def _fix_windows_dpi_scaling():
@@ -39,6 +81,10 @@ class NWNAnalyzerApp(tk.Tk):
         self.geometry("1150x720")
         self.cfg = load_config()
         self.selected_files = []
+        self.stats_pc = {}
+        self.stats_m = {}
+        self.extra_stats = {}
+        self.characters = []
 
         self._build_top_bar()
         self._build_char_box()
@@ -68,6 +114,12 @@ class NWNAnalyzerApp(tk.Tk):
 
         ttk.Button(
             frame, text="Analyze", command=self.run_analysis
+        ).pack(side="right")
+        ttk.Button(
+            frame, text="Export Excel", command=self.export_excel
+        ).pack(side="right", padx=6)
+        ttk.Button(
+            frame, text="View Events", command=self.open_events_window
         ).pack(side="right")
 
     # ---------- Character roster ----------
@@ -214,17 +266,45 @@ class NWNAnalyzerApp(tk.Tk):
     def _make_tree_tab(self, title, columns):
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text=title)
-        tree = ttk.Treeview(tab, columns=columns, show="tree headings")
+
+        tree_frame = ttk.Frame(tab)
+        tree_frame.pack(fill="both", expand=True)
+
+        tree = ttk.Treeview(
+            tree_frame, columns=columns, show="tree headings")
         tree.heading("#0", text="Name / Detail")
         tree.column("#0", width=220, anchor="w")
         for c in columns:
             tree.heading(c, text=c)
             tree.column(c, width=110, anchor="center")
-        vsb = ttk.Scrollbar(tab, orient="vertical", command=tree.yview)
+        vsb = ttk.Scrollbar(
+            tree_frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
         tree.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
+
+        info_var = tk.StringVar(value="Select a row to see details here.")
+        info_bar = ttk.Label(
+            tab, textvariable=info_var, anchor="w",
+            wraplength=1100, padding=(6, 4), relief="sunken")
+        info_bar.pack(fill="x", side="bottom")
+
+        tree.bind(
+            "<<TreeviewSelect>>",
+            lambda e, t=tree, v=info_var: self._on_tree_select(t, v))
         return tree
+
+    def _on_tree_select(self, tree, info_var):
+        sel = tree.selection()
+        if not sel:
+            return
+        label = tree.item(sel[0], "text").strip()
+        key = label.split(":")[0].strip()
+        desc = LEGEND.get(key)
+        if desc:
+            info_var.set("{}: {}".format(key, desc))
+        else:
+            info_var.set("")
 
     def _make_flat_tab(self, title, columns):
         tab = ttk.Frame(self.notebook)
@@ -261,6 +341,11 @@ class NWNAnalyzerApp(tk.Tk):
         if files_processed == 0:
             messagebox.showerror("Error", "No log files could be processed.")
             return
+
+        self.stats_pc = stats_pc
+        self.stats_m = stats_m
+        self.extra_stats = extra_stats
+        self.characters = characters
 
         self._fill_character_tab(stats_pc, characters, extra_stats)
         self._fill_monster_tab(stats_m, characters, extra_stats)
@@ -344,9 +429,23 @@ class NWNAnalyzerApp(tk.Tk):
                         parent, "end",
                         text="  Cast: " + spell,
                         values=("", "", "", "{}x".format(count)))
-                    
 
+            atk_h = ex.get("atk_hits", 0)
+            atk_m = ex.get("atk_misses", 0)
+            def_h = ex.get("def_hits", 0)
+            def_m = ex.get("def_misses", 0)
+            if atk_h or atk_m or def_h or def_m:
+                self.tree_char.insert(
+                    parent, "end",
+                    text="  Attack Record",
+                    values=("", "", "",
+                            "Swings {}H-{}M / Taken {}H-{}M".format(
+                                atk_h, atk_m, def_h, def_m)))
+
+
+                    
     def _fill_monster_tab(self, stats_m, characters, extra_stats):
+
         self._clear_tree(self.tree_mon)
         for m, d in sorted(stats_m.items()):
             if m in characters or m in IGNORED_NAMES:
@@ -412,6 +511,20 @@ class NWNAnalyzerApp(tk.Tk):
                             parent, "end",
                             text="  Cast: " + spell,
                             values=("", "", "", "{}x".format(count)))
+
+                atk_h = ex.get("atk_hits", 0)
+                atk_m = ex.get("atk_misses", 0)
+                def_h = ex.get("def_hits", 0)
+                def_m = ex.get("def_misses", 0)
+                if atk_h or atk_m or def_h or def_m:
+                    self.tree_mon.insert(
+                        parent, "end",
+                        text="  Attack Record",
+                        values=("", "", "",
+                                "Swings {}H-{}M / Taken {}H-{}M".format(
+                                    atk_h, atk_m, def_h, def_m)))
+
+
 
     def _fill_saves_tab(self, extra_stats, characters):
         self._clear_tree(self.tree_saves)
@@ -488,6 +601,153 @@ class NWNAnalyzerApp(tk.Tk):
                 values=(
                     rank, name, d["dmg_tot"], d["kills"],
                     round(avg, 2)))
+
+
+    # ---------- Events window ----------
+    def open_events_window(self):
+        if not self.extra_stats:
+            messagebox.showwarning(
+                "No data", "Run an analysis first.")
+            return
+
+        win = tk.Toplevel(self)
+        win.title("Combat Events")
+        win.geometry("900x560")
+
+        top = ttk.Frame(win)
+        top.pack(fill="x", padx=8, pady=6)
+
+        ttk.Label(top, text="Name:").pack(side="left")
+        names = sorted(
+            n for n in self.extra_stats
+            if n not in IGNORED_NAMES and self.extra_stats[n]["events"]
+        )
+        name_var = tk.StringVar(value=names[0] if names else "")
+        name_box = ttk.Combobox(
+            top, textvariable=name_var, values=names,
+            state="readonly", width=30)
+        name_box.pack(side="left", padx=6)
+
+        filter_var = tk.StringVar(value="all")
+        ttk.Radiobutton(
+            top, text="All", variable=filter_var,
+            value="all").pack(side="left", padx=4)
+        ttk.Radiobutton(
+            top, text="Hits", variable=filter_var,
+            value="hit").pack(side="left", padx=4)
+        ttk.Radiobutton(
+            top, text="Misses", variable=filter_var,
+            value="miss").pack(side="left", padx=4)
+
+        list_frame = ttk.Frame(win)
+        list_frame.pack(fill="both", expand=True, padx=8, pady=6)
+        events_list = tk.Listbox(list_frame, font=("Consolas", 9))
+        events_list.pack(side="left", fill="both", expand=True)
+        vsb = ttk.Scrollbar(
+            list_frame, orient="vertical", command=events_list.yview)
+        events_list.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+
+        def refresh(*_args):
+            events_list.delete(0, "end")
+            name = name_var.get()
+            if not name:
+                return
+            kind = filter_var.get()
+            for ev_kind, raw in self.extra_stats[name]["events"]:
+                if kind != "all" and ev_kind != kind:
+                    continue
+                events_list.insert("end", raw)
+
+        name_box.bind("<<ComboboxSelected>>", refresh)
+        filter_var.trace_add("write", refresh)
+        refresh()
+
+    # ---------- Excel export ----------
+    def export_excel(self):
+        if not self.stats_pc and not self.stats_m:
+            messagebox.showwarning(
+                "No data", "Run an analysis first.")
+            return
+
+        path = filedialog.asksaveasfilename(
+            title="Save analysis as",
+            defaultextension=".xlsx",
+            filetypes=[("Excel Workbook", "*.xlsx")])
+        if not path:
+            return
+
+        wb = Workbook()
+        self._write_character_sheet(wb.active)
+        wb.active.title = "Character Stats"
+        self._write_monster_sheet(wb.create_sheet("Monster Stats"))
+        self._write_saves_sheet(wb.create_sheet("Saving Throws"))
+        self._write_leaderboard_sheet(wb.create_sheet("Leaderboard"))
+        wb.save(path)
+
+        messagebox.showinfo("Exported", "Analysis saved to:\n" + path)
+
+    def _write_character_sheet(self, ws):
+        ws.append([
+            "Name", "Kills", "Total Dmg", "Avg/Hit",
+            "Atk Hits", "Atk Misses", "Def Hits", "Def Misses"])
+        for name in self.characters:
+            d = self.stats_pc.get(name, {})
+            ex = self.extra_stats.get(name, {})
+            avg = (d.get("dmg_tot", 0) / d["hits_count"]
+                   if d.get("hits_count") else 0)
+            ws.append([
+                name, d.get("kills", 0), d.get("dmg_tot", 0),
+                round(avg, 2), ex.get("atk_hits", 0),
+                ex.get("atk_misses", 0), ex.get("def_hits", 0),
+                ex.get("def_misses", 0)])
+
+    def _write_monster_sheet(self, ws):
+        ws.append([
+            "Name", "Max AB", "Avg Dmg", "Kills",
+            "Atk Hits", "Atk Misses", "Def Hits", "Def Misses"])
+        for name, d in sorted(self.stats_m.items()):
+            if name in self.characters or name in IGNORED_NAMES:
+                continue
+            ex = self.extra_stats.get(name, {})
+            avg_m = (d["dmg_val"] / d["dmg_count"]
+                     if d.get("dmg_count") else 0)
+            ws.append([
+                name, max(d["ab"]) if d.get("ab") else 0,
+                round(avg_m, 2), d.get("kills", 0),
+                ex.get("atk_hits", 0), ex.get("atk_misses", 0),
+                ex.get("def_hits", 0), ex.get("def_misses", 0)])
+
+    def _write_saves_sheet(self, ws):
+        ws.append([
+            "Name", "Category", "Check", "Count",
+            "Bonus Range", "DC Range", "Min Roll Needed",
+            "Success", "Fail"])
+        for name, d in sorted(self.extra_stats.items()):
+            if name in IGNORED_NAMES:
+                continue
+            category = "Character" if name in self.characters \
+                else "Monster"
+            for check_key, res in sorted(d["checks"].items()):
+                totals = res["totals"]
+                if not totals:
+                    continue
+                dcs, bonuses = res["dcs"], res["bonuses"]
+                needed = max(max(dcs) - min(bonuses), 1)
+                ws.append([
+                    name, category, check_key, len(totals),
+                    "{}-{}".format(min(bonuses), max(bonuses)),
+                    "{}-{}".format(min(dcs), max(dcs)), needed,
+                    res["success"], res["fail"]])
+
+    def _write_leaderboard_sheet(self, ws):
+        ws.append(["Rank", "Character", "Total Damage", "Kills", "Avg/Hit"])
+        ranked = sorted(
+            self.stats_pc.items(),
+            key=lambda kv: kv[1]["dmg_tot"], reverse=True)
+        for rank, (name, d) in enumerate(ranked, start=1):
+            avg = d["dmg_tot"] / d["hits_count"] if d["hits_count"] else 0
+            ws.append([rank, name, d["dmg_tot"], d["kills"], round(avg, 2)])
 
 
 if __name__ == "__main__":
