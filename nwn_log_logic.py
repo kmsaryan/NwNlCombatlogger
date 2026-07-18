@@ -46,6 +46,7 @@ RE_IMMUNE = re.compile(
     r"^(.*?) : Damage Immunity.*?absorbs (\d+) damage"
 )
 RE_DMG_TYPE_PAIR = re.compile(r"([A-Za-z][A-Za-z ]*?)\s+(\d+)")
+RE_CAST = re.compile(r"^(.*?) casting (.*)")
 
 
 def load_config():
@@ -77,7 +78,8 @@ def _new_monster_bucket():
 def _new_extra_bucket():
     return {
         "checks": defaultdict(lambda: {
-            "totals": [], "dcs": [], "success": 0, "fail": 0
+            "totals": [], "dcs": [], "bonuses": [],
+            "success": 0, "fail": 0
         }),
         "dr_absorbed": 0,
         "immunity_absorbed": 0,
@@ -88,6 +90,7 @@ def _new_extra_bucket():
         "dmg_taken_types": defaultdict(int),
         "hits_dealt": 0,
         "hits_taken": 0,
+        "spells_cast": defaultdict(int),
     }
 
 
@@ -133,6 +136,8 @@ def analyze_nwn_log(file_paths, character_names):
                     if _handle_attack_line(
                         line, stats_pc, stats_m, extra_stats
                     ):
+                        continue
+                    if _handle_cast_line(line, extra_stats):
                         continue
                     if _handle_save_line(line, extra_stats):
                         continue
@@ -195,10 +200,22 @@ def _handle_save_line(line, extra_stats):
     bucket = extra_stats[name]["checks"][check_key]
     bucket["totals"].append(int(total))
     bucket["dcs"].append(int(dc))
+    bucket["bonuses"].append(int(bonus))
     if "success" in result.lower():
         bucket["success"] += 1
     else:
         bucket["fail"] += 1
+    return True
+
+
+def _handle_cast_line(line, extra_stats):
+    m_cast = RE_CAST.search(line)
+    if not m_cast:
+        return False
+    caster, spell = m_cast.groups()
+    caster = _strip_prefix(caster.strip())
+    spell = spell.strip()
+    extra_stats[caster]["spells_cast"][spell] += 1
     return True
 
 

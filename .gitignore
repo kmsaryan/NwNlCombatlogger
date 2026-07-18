@@ -5,3 +5,5 @@ NWN_Log_Analyzer.spec
 __pycache__/
 nwn_gui_frontend.txt
 nwn_log_logic.txt
+build_exe.txt
+install.txt

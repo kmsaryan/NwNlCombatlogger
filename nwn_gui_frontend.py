@@ -196,7 +196,8 @@ class NWNAnalyzerApp(tk.Tk):
         self.tree_saves = self._make_flat_tab(
             "Saving Throws (All)",
             ["Name", "Category", "Check", "Count",
-             "Roll Range", "DC Range", "Avg Roll"])
+             "Save Bonus Range", "DC Range",
+             "Min Roll Needed", "Success/Fail"])
         self.tree_mit = self._make_flat_tab(
             "Mitigation & Threat (All)",
             ["Name", "Category", "DR", "Immunity", "Concealed",
@@ -305,13 +306,17 @@ class NWNAnalyzerApp(tk.Tk):
                 if not totals:
                     continue
                 dcs = res["dcs"]
+                bonuses = res["bonuses"]
+                min_roll_needed = max(max(dcs) - min(bonuses), 1)
                 self.tree_char.insert(
                     parent, "end",
                     text="  Save: " + check_key,
                     values=("", "", "",
-                            "Roll {}-{} vs DC {}-{}".format(
-                                min(totals), max(totals),
-                                min(dcs), max(dcs))))
+                            "Bonus {}-{} / DC {}-{} / "
+                            "Needs {}+ / {}S-{}F".format(
+                                min(bonuses), max(bonuses),
+                                min(dcs), max(dcs), min_roll_needed,
+                                res["success"], res["fail"])))
 
             if ex["dr_absorbed"] or ex["immunity_absorbed"] or \
                     ex["concealed_against"]:
@@ -331,6 +336,15 @@ class NWNAnalyzerApp(tk.Tk):
                     values=("", "", "",
                             "Count {} / Max {} / Avg {:.2f}".format(
                                 len(tr), max(tr), sum(tr) / len(tr))))
+
+            spells = ex.get("spells_cast")
+            if spells:
+                for spell, count in sorted(spells.items()):
+                    self.tree_char.insert(
+                        parent, "end",
+                        text="  Cast: " + spell,
+                        values=("", "", "", "{}x".format(count)))
+                    
 
     def _fill_monster_tab(self, stats_m, characters, extra_stats):
         self._clear_tree(self.tree_mon)
@@ -363,13 +377,17 @@ class NWNAnalyzerApp(tk.Tk):
                     if not totals:
                         continue
                     dcs = res["dcs"]
+                    bonuses = res["bonuses"]
+                    min_roll_needed = max(max(dcs) - min(bonuses), 1)
                     self.tree_mon.insert(
                         parent, "end",
                         text="  Save: " + check_key,
                         values=("", "", "",
-                                "Roll {}-{} vs DC {}-{}".format(
-                                    min(totals), max(totals),
-                                    min(dcs), max(dcs))))
+                                "Bonus {}-{} / DC {}-{} / "
+                                "Needs {}+ / {}S-{}F".format(
+                                    min(bonuses), max(bonuses),
+                                    min(dcs), max(dcs), min_roll_needed,
+                                    res["success"], res["fail"])))
 
                 dealt = ex["dmg_dealt_types"]
                 for dtype, amt in sorted(dealt.items()):
@@ -386,6 +404,15 @@ class NWNAnalyzerApp(tk.Tk):
                     values=("", "", "",
                             "{} kill(s): {}".format(d["kills"], victims)))
 
+            if ex:
+                spells = ex.get("spells_cast")
+                if spells:
+                    for spell, count in sorted(spells.items()):
+                        self.tree_mon.insert(
+                            parent, "end",
+                            text="  Cast: " + spell,
+                            values=("", "", "", "{}x".format(count)))
+
     def _fill_saves_tab(self, extra_stats, characters):
         self._clear_tree(self.tree_saves)
         for name, d in sorted(extra_stats.items()):
@@ -397,13 +424,16 @@ class NWNAnalyzerApp(tk.Tk):
                 if not totals:
                     continue
                 dcs = res["dcs"]
+                bonuses = res["bonuses"]
+                min_roll_needed = max(max(dcs) - min(bonuses), 1)
                 self.tree_saves.insert(
                     "", "end",
                     values=(
                         name, category, check_key, len(totals),
-                        "{} - {}".format(min(totals), max(totals)),
+                        "{} - {}".format(min(bonuses), max(bonuses)),
                         "{} - {}".format(min(dcs), max(dcs)),
-                        round(sum(totals) / len(totals), 2)))
+                        min_roll_needed,
+                        "{}/{}".format(res["success"], res["fail"])))
 
     def _fill_mitigation_tab(self, extra_stats, characters):
         self._clear_tree(self.tree_mit)
