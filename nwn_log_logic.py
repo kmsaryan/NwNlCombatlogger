@@ -1,3 +1,10 @@
+"""
+nwn_log_logic.py
+------------------
+Core parsing logic for NWN combat logs. Contains no GUI code, so it can
+be reused by the Tkinter app, a future web app, or unit tests.
+"""
+
 import re
 import os
 import json
@@ -7,7 +14,20 @@ CONFIG_PATH = os.path.join(
     os.path.expanduser("~"), ".nwn_log_analyzer_config.json"
 )
 
-DEFAULT_CHARACTERS = ["Klanitha"]
+DEFAULT_CHARACTERS = [
+    "Klanitha",
+    "Throkka Fynn",
+    "Hamar Wetton",
+    "Norio Mirna",
+    "Peram Wisto",
+    "Meroippi Tosentold",
+    "Darian Tosenet",
+    "Buppi Tosenet",
+    "Lorin Hawkeye",
+    "Krazgul Bone-Eye",
+    "Gwen Mars",
+    "Sano Fynn",
+]
 
 IGNORED_NAMES = ["Someone", "Object", ""]
 
@@ -49,7 +69,8 @@ def save_config(cfg):
 def _new_monster_bucket():
     return {
         "ab": [], "hits_ac": [], "misses_ac": [],
-        "dmg_val": 0, "dmg_count": 0,
+        "dmg_val": 0, "dmg_count": 0, "dmg_hits": [],
+        "kills": 0, "kill_victims": [],
     }
 
 
@@ -109,8 +130,9 @@ def analyze_nwn_log(file_paths, character_names):
                     if not line:
                         continue
 
-                    if _handle_attack_line(line, stats_pc, stats_m,
-                                            extra_stats):
+                    if _handle_attack_line(
+                        line, stats_pc, stats_m, extra_stats
+                    ):
                         continue
                     if _handle_save_line(line, extra_stats):
                         continue
@@ -118,10 +140,11 @@ def analyze_nwn_log(file_paths, character_names):
                         continue
                     if _handle_immunity_line(line, extra_stats):
                         continue
-                    if _handle_damage_line(line, stats_pc, stats_m,
-                                            extra_stats):
+                    if _handle_damage_line(
+                        line, stats_pc, stats_m, extra_stats
+                    ):
                         continue
-                    if _handle_kill_line(line, stats_pc):
+                    if _handle_kill_line(line, stats_pc, stats_m):
                         continue
         except FileNotFoundError:
             errors.append(file_path)
@@ -220,18 +243,23 @@ def _handle_damage_line(line, stats_pc, stats_m, extra_stats):
     elif tgt in stats_pc:
         stats_m[atk]["dmg_val"] += val
         stats_m[atk]["dmg_count"] += 1
+        stats_m[atk]["dmg_hits"].append(val)
 
     extra_stats[atk]["hits_dealt"] += 1
     extra_stats[tgt]["hits_taken"] += 1
     return True
 
 
-def _handle_kill_line(line, stats_pc):
+def _handle_kill_line(line, stats_pc, stats_m):
     m_kil = RE_KILL.search(line)
     if not m_kil:
         return False
     kil, vic = m_kil.groups()
     kil = _strip_prefix(kil.strip())
+    vic = _strip_prefix(vic.strip())
     if kil in stats_pc:
         stats_pc[kil]["kills"] += 1
+    elif vic in stats_pc:
+        stats_m[kil]["kills"] += 1
+        stats_m[kil]["kill_victims"].append(vic)
     return True

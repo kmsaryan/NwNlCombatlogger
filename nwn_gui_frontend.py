@@ -1,3 +1,11 @@
+"""
+nwn_gui_frontend.py
+---------------------
+Tkinter frontend for the NWN combat log analyzer. All parsing logic
+lives in nwn_log_logic.py - this file only builds the window and
+displays results.
+"""
+
 import os
 import re
 import glob
@@ -6,7 +14,7 @@ import platform
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-from nwn_log_parser import (
+from nwn_log_logic import (
     analyze_nwn_log, load_config, save_config,
     DEFAULT_CHARACTERS, IGNORED_NAMES,
 )
@@ -28,7 +36,7 @@ class NWNAnalyzerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("NWN Combat Log Analyzer")
-        self.geometry("1100x700")
+        self.geometry("1150x720")
         self.cfg = load_config()
         self.selected_files = []
 
@@ -153,9 +161,9 @@ class NWNAnalyzerApp(tk.Tk):
         folder = self.cfg.get("default_log_dir", os.getcwd())
         found = sorted(
             glob.glob(os.path.join(folder, "nwclientLog*.txt")),
-            key=lambda p: int(re.search(r"(\d+)", os.path.basename(p))
-                               .group(1))
-            if re.search(r"(\d+)", os.path.basename(p)) else 0
+            key=lambda p: int(
+                re.search(r"(\d+)", os.path.basename(p)).group(1)
+            ) if re.search(r"(\d+)", os.path.basename(p)) else 0
         )
         if not found:
             messagebox.showwarning(
@@ -174,35 +182,39 @@ class NWNAnalyzerApp(tk.Tk):
             messagebox.showinfo(
                 "Saved", "Default log folder updated to:\n" + folder)
 
+    # ---------- Tabs ----------
     def _build_tabs(self):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=6)
 
-        self.tree_char = self._make_char_tab(
+        self.tree_char = self._make_tree_tab(
             "Character Stats",
             ["Kills", "Total Dmg", "Avg/Hit", "Detail"])
-        self.tree_mon = self._make_tab(
+        self.tree_mon = self._make_tree_tab(
             "Monster Stats",
-            ["Monster", "Max AB", "AC Range", "Avg Dmg"])
-        self.tree_saves = self._make_tab(
+            ["Max AB", "AC Range", "Avg Dmg", "Detail"])
+        self.tree_saves = self._make_flat_tab(
             "Saving Throws (All)",
             ["Name", "Category", "Check", "Count",
              "Roll Range", "DC Range", "Avg Roll"])
-        self.tree_mit = self._make_tab(
+        self.tree_mit = self._make_flat_tab(
             "Mitigation & Threat (All)",
             ["Name", "Category", "DR", "Immunity", "Concealed",
              "Avg Conceal %", "Threat Count", "Threat Max", "Threat Avg"])
-        self.tree_dmg_types = self._make_tab(
+        self.tree_dmg_types = self._make_flat_tab(
             "Damage Types (All)",
             ["Name", "Category", "Damage Type",
              "Dealt", "Taken"])
+        self.tree_leaderboard = self._make_flat_tab(
+            "Session Leaderboard",
+            ["Rank", "Character", "Total Damage",
+             "Kills", "Avg/Hit"])
 
-    def _make_char_tab(self, title, columns):
+    def _make_tree_tab(self, title, columns):
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text=title)
-        tree = ttk.Treeview(
-            tab, columns=columns, show="tree headings")
-        tree.heading("#0", text="Character / Detail")
+        tree = ttk.Treeview(tab, columns=columns, show="tree headings")
+        tree.heading("#0", text="Name / Detail")
         tree.column("#0", width=220, anchor="w")
         for c in columns:
             tree.heading(c, text=c)
@@ -213,7 +225,7 @@ class NWNAnalyzerApp(tk.Tk):
         vsb.pack(side="right", fill="y")
         return tree
 
-    def _make_tab(self, title, columns):
+    def _make_flat_tab(self, title, columns):
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text=title)
         tree = ttk.Treeview(tab, columns=columns, show="headings")
@@ -250,10 +262,11 @@ class NWNAnalyzerApp(tk.Tk):
             return
 
         self._fill_character_tab(stats_pc, characters, extra_stats)
-        self._fill_monster_tab(stats_m, characters)
+        self._fill_monster_tab(stats_m, characters, extra_stats)
         self._fill_saves_tab(extra_stats, characters)
         self._fill_mitigation_tab(extra_stats, characters)
         self._fill_damage_types_tab(extra_stats, characters)
+        self._fill_leaderboard_tab(stats_pc)
         messagebox.showinfo(
             "Done", "Processed {} file(s) successfully.".format(
                 files_processed))
@@ -261,7 +274,7 @@ class NWNAnalyzerApp(tk.Tk):
     def _clear_tree(self, tree):
         for row in tree.get_children():
             tree.delete(row)
-    
+
     def _fill_character_tab(self, stats_pc, characters, extra_stats):
         self._clear_tree(self.tree_char)
         for p in characters:
@@ -319,9 +332,7 @@ class NWNAnalyzerApp(tk.Tk):
                             "Count {} / Max {} / Avg {:.2f}".format(
                                 len(tr), max(tr), sum(tr) / len(tr))))
 
-
-
-    def _fill_monster_tab(self, stats_m, characters):
+    def _fill_monster_tab(self, stats_m, characters, extra_stats):
         self._clear_tree(self.tree_mon)
         for m, d in sorted(stats_m.items()):
             if m in characters or m in IGNORED_NAMES:
@@ -330,10 +341,50 @@ class NWNAnalyzerApp(tk.Tk):
             hi_miss = max(d["misses_ac"]) + 1 if d["misses_ac"] else "?"
             lo_hit = min(d["hits_ac"]) if d["hits_ac"] else "?"
             avg_m = d["dmg_val"] / d["dmg_count"] if d["dmg_count"] else 0
-            self.tree_mon.insert(
-                "", "end",
-                values=(m, max_ab, "{} - {}".format(hi_miss, lo_hit),
-                         round(avg_m, 2)))
+
+            parent = self.tree_mon.insert(
+                "", "end", text=m, values=(
+                    max_ab, "{} - {}".format(hi_miss, lo_hit),
+                    round(avg_m, 2), ""))
+
+            hits = d.get("dmg_hits", [])
+            if hits:
+                self.tree_mon.insert(
+                    parent, "end",
+                    text="  Per-Attack Damage",
+                    values=("", "", "",
+                            "Min {} / Max {} / Count {}".format(
+                                min(hits), max(hits), len(hits))))
+
+            ex = extra_stats.get(m)
+            if ex:
+                for check_key, res in sorted(ex["checks"].items()):
+                    totals = res["totals"]
+                    if not totals:
+                        continue
+                    dcs = res["dcs"]
+                    self.tree_mon.insert(
+                        parent, "end",
+                        text="  Save: " + check_key,
+                        values=("", "", "",
+                                "Roll {}-{} vs DC {}-{}".format(
+                                    min(totals), max(totals),
+                                    min(dcs), max(dcs))))
+
+                dealt = ex["dmg_dealt_types"]
+                for dtype, amt in sorted(dealt.items()):
+                    self.tree_mon.insert(
+                        parent, "end",
+                        text="  Damage Type: " + dtype,
+                        values=("", "", "", "Dealt {}".format(amt)))
+
+            if d.get("kills"):
+                victims = ", ".join(d.get("kill_victims", []))
+                self.tree_mon.insert(
+                    parent, "end",
+                    text="  Kills",
+                    values=("", "", "",
+                            "{} kill(s): {}".format(d["kills"], victims)))
 
     def _fill_saves_tab(self, extra_stats, characters):
         self._clear_tree(self.tree_saves)
@@ -394,6 +445,19 @@ class NWNAnalyzerApp(tk.Tk):
                     values=(
                         name, category, dtype,
                         dealt.get(dtype, 0), taken.get(dtype, 0)))
+
+    def _fill_leaderboard_tab(self, stats_pc):
+        self._clear_tree(self.tree_leaderboard)
+        ranked = sorted(
+            stats_pc.items(),
+            key=lambda kv: kv[1]["dmg_tot"], reverse=True)
+        for rank, (name, d) in enumerate(ranked, start=1):
+            avg = d["dmg_tot"] / d["hits_count"] if d["hits_count"] else 0
+            self.tree_leaderboard.insert(
+                "", "end",
+                values=(
+                    rank, name, d["dmg_tot"], d["kills"],
+                    round(avg, 2)))
 
 
 if __name__ == "__main__":

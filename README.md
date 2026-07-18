@@ -65,8 +65,8 @@ There are two ways to use this tool, depending on your comfort level.
 3. Double-click to run. A desktop window opens with buttons and text
    boxes — no command line needed.
 4. (Optional) Run `install.py` once beforehand if you want to pre-set
-   your default log folder and character roster so the app opens ready
-   to go every time.
+  your default log folder and character roster so the app opens ready
+  to go every time.
 
 ### Option B: Run from source (for developers / advanced users)
 
@@ -74,7 +74,7 @@ Requires Python 3.9+ installed.
 
 ```cmd
 pip install -r requirements.txt
-python nwn_gui_app.py
+python nwn_gui_frontend.py
 ```
 
 ---
@@ -94,7 +94,7 @@ python nwn_gui_app.py
 
 ## 5. Building the executable (developers only)
 
-If you've made changes to `nwn_gui_app.py` and want to rebuild the
+If you've made changes to `nwn_gui_frontend.py` and want to rebuild the
 distributable `.exe`:
 
 ```cmd
@@ -113,5 +113,5 @@ file to GitHub Releases — end users never need Python installed.
   Windows `.exe`, on macOS for a Mac app, etc.). It does not cross-compile.
 - Log parsing logic is based on standard NWN combat log line formats.
   If your server uses a modified logging format, some lines may not be
-  captured — check the regex patterns in `nwn_gui_app.py` if stats look
+  captured — check the regex patterns in `nwn_log_logic.py` if stats look
   incomplete.

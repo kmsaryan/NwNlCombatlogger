@@ -1,19 +1,4 @@
-"""
-NWN Log Analyzer - Installer
------------------------------
-Run this once after downloading the repository. It will:
-1. Check for Python (guides the user to install it if missing - only needed
-   for building from source; end users running the packaged .exe skip this).
-2. Ask the user to confirm/set the folder where their log files live
-   (e.g. the NWN client's "logs" folder).
-3. Save that folder + default character list into a config file used
-   by the GUI app every time it launches.
-4. Optionally create a desktop shortcut to the packaged .exe (Windows only).
-
-Usage:
-    python install.py
-"""
-
+#!/usr/bin/python3
 import os
 import json
 import platform
@@ -83,7 +68,9 @@ def main():
             _create_windows_shortcut()
 
     print("\nSetup complete. You can now launch 'NWN_Log_Analyzer.exe'")
-    print("(or run 'python nwn_gui_app.py' if using the source version).")
+    print(
+        "(or run 'python nwn_gui_frontend.py' if using the source version)."
+    )
 
 
 def _create_windows_shortcut():

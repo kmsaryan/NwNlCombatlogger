@@ -2,4 +2,6 @@
 build/
 dist/
 NWN_Log_Analyzer.spec
-_pycache__/
+__pycache__/
+nwn_gui_frontend.txt
+nwn_log_logic.txt

@@ -1,4 +1,3 @@
-streamlit
 pyinstaller
 
 # Optional Windows-only shortcut support used by install.py
