@@ -10,6 +10,7 @@ throws, damage mitigation, and threat rolls.
 
 Before you can analyze anything, NWN needs to actually write combat data
 to a log file. By default this is turned off.
+<img width="793" height="840" alt="image" src="https://github.com/user-attachments/assets/5f035340-a802-437c-9e80-31c704339dc8" />
 
 - Open this file: `E:\Program Files\NWN Diamond\nwnplayer.ini`
 - Under `[Game Options]`, add these two lines (or enable them if already present):
