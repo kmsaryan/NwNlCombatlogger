@@ -9,7 +9,7 @@ throws, damage mitigation, and threat rolls.
 ## 1. Pre-setup (game side)
 
 Before you can analyze anything, NWN needs to actually write combat data
-to a log file. By default this is turned off.
+to a log file. By default this is turned off. roughly the below file is located where the main game exe file is present in my case it was like the below
 <img width="793" height="840" alt="image" src="https://github.com/user-attachments/assets/5f035340-a802-437c-9e80-31c704339dc8" />
 
 - Open this file: `E:\Program Files\NWN Diamond\nwnplayer.ini`
